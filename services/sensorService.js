@@ -1,56 +1,28 @@
 const config = require('../config');
+const { database, ref, onValue } = require('../config/firebase');
 
 class SensorService {
   constructor() {
     this.history = [];
-    this.latestReading = null;
-    this.intervalId = null;
+    this.latestReading = { temperature: 37.0, humidity: 60.0, timestamp: new Date().toISOString() };
     this.listeners = [];
+    this.isStreaming = false;
+    
+    // Store current values so we can combine them into a single reading
+    this.currentTemp = 37.0;
+    this.currentHum = 60.0;
   }
 
   /**
-   * Generate a realistic sensor reading with smooth fluctuation.
-   * Uses a random walk approach so values change gradually, not erratically.
-   */
-  _generateReading() {
-    const { temperature, humidity } = config.sensor;
-    const now = new Date();
-
-    let temp, hum;
-
-    if (this.latestReading) {
-      // Random walk from the previous value for smooth graph lines
-      const tempDelta = (Math.random() - 0.5) * 0.4;
-      const humDelta = (Math.random() - 0.5) * 2;
-
-      temp = this.latestReading.temperature + tempDelta;
-      hum = this.latestReading.humidity + humDelta;
-
-      // Pull toward ideal values to prevent drift
-      temp += (temperature.ideal - temp) * 0.05;
-      hum += (humidity.ideal - hum) * 0.05;
-    } else {
-      // Initial reading close to ideal
-      temp = temperature.ideal + (Math.random() - 0.5) * temperature.variance;
-      hum = humidity.ideal + (Math.random() - 0.5) * humidity.variance;
-    }
-
-    // Clamp to valid ranges
-    temp = Math.max(temperature.min, Math.min(temperature.max, temp));
-    hum = Math.max(humidity.min, Math.min(humidity.max, hum));
-
-    return {
-      temperature: parseFloat(temp.toFixed(1)),
-      humidity: parseFloat(hum.toFixed(1)),
-      timestamp: now.toISOString(),
-    };
-  }
-
-  /**
-   * Record a reading into history and notify listeners.
+   * Internal method to record the latest combined reading into history and notify listeners.
    */
   _recordReading() {
-    const reading = this._generateReading();
+    const reading = {
+      temperature: this.currentTemp,
+      humidity: this.currentHum,
+      timestamp: new Date().toISOString(),
+    };
+    
     this.latestReading = reading;
 
     this.history.push(reading);
@@ -72,32 +44,45 @@ class SensorService {
   }
 
   /**
-   * Start generating readings at the configured interval.
+   * Start listening to Firebase for sensor data.
    */
   startStreaming() {
-    if (this.intervalId) return;
+    if (this.isStreaming) return;
+    this.isStreaming = true;
 
-    // Generate an initial batch of history so graphs aren't empty on connect
-    for (let i = 0; i < 10; i++) {
-      this._recordReading();
+    if (!database) {
+      console.warn('[SensorService] Firebase not configured. Sensors will not update.');
+      return;
     }
 
-    this.intervalId = setInterval(() => {
-      this._recordReading();
-    }, config.sensor.intervalMs);
+    console.log('[SensorService] Connecting to Firebase for live sensor data...');
 
-    console.log(`[SensorService] Streaming started (every ${config.sensor.intervalMs}ms)`);
+    const tempRef = ref(database, 'Sensors/Temperature');
+    const humRef = ref(database, 'Sensors/Humidity');
+
+    onValue(tempRef, (snapshot) => {
+      const val = snapshot.val();
+      if (val !== null) {
+        this.currentTemp = parseFloat(val);
+        this._recordReading();
+      }
+    });
+
+    onValue(humRef, (snapshot) => {
+      const val = snapshot.val();
+      if (val !== null) {
+        this.currentHum = parseFloat(val);
+        this._recordReading();
+      }
+    });
   }
 
   /**
-   * Stop generating readings.
+   * Stop listening (mostly a no-op when using Firebase onValue, or we'd unsubscribe).
    */
   stopStreaming() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-      console.log('[SensorService] Streaming stopped');
-    }
+    this.isStreaming = false;
+    console.log('[SensorService] Streaming stopped');
   }
 
   /**

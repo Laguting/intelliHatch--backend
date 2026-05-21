@@ -1,28 +1,32 @@
-const { initializeApp } = require('firebase/app');
-const { getDatabase, ref, set, get, onValue, push } = require('firebase/database');
+const admin = require('firebase-admin');
+const path = require('path');
 
-// Firebase configuration loaded from environment variables (.env)
-const firebaseConfig = {
-  apiKey:            process.env.FIREBASE_API_KEY,
-  authDomain:        process.env.FIREBASE_AUTH_DOMAIN,
-  projectId:         process.env.FIREBASE_PROJECT_ID,
-  storageBucket:     process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId:             process.env.FIREBASE_APP_ID,
-  measurementId:     process.env.FIREBASE_MEASUREMENT_ID,
-  databaseURL:       process.env.FIREBASE_DATABASE_URL,
-};
+// Path to the downloaded service account key
+const serviceAccountPath = path.join(__dirname, '../intellihatch-05es-firebase-adminsdk-fbsvc-676254b6e0.json');
 
 let app = null;
 let database = null;
 
 try {
-  app = initializeApp(firebaseConfig);
-  database = getDatabase(app);
-  console.log('[Firebase] Initialized for project:', process.env.FIREBASE_PROJECT_ID);
+  const serviceAccount = require(serviceAccountPath);
+
+  app = admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: process.env.FIREBASE_DATABASE_URL
+  });
+  
+  database = admin.database();
+  console.log('[Firebase] Admin SDK Initialized for project:', process.env.FIREBASE_PROJECT_ID);
 } catch (error) {
   console.warn('[Firebase] Initialization failed:', error.message);
-  console.warn('[Firebase] Server will run without Firebase. Check your .env credentials.');
+  console.warn('[Firebase] Server will run without Firebase. Check your .env credentials and service account file.');
 }
+
+// Wrappers to match Firebase Client SDK syntax so we don't have to rewrite our services
+const ref = (db, dbPath) => db.ref(dbPath);
+const onValue = (reference, callback) => reference.on('value', (snapshot) => callback(snapshot));
+const set = (reference, value) => reference.set(value);
+const get = (reference) => reference.once('value');
+const push = (reference, value) => reference.push(value);
 
 module.exports = { app, database, ref, set, get, onValue, push };

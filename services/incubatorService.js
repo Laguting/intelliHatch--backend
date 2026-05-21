@@ -1,17 +1,53 @@
 const config = require('../config');
+const { database, ref, onValue, set } = require('../config/firebase');
 
 class IncubatorService {
   constructor() {
     this.isActive = false;
     this.dayCount = 0;
     this.startDate = null;
-    this.dayTimerId = null;
     this.listeners = [];
+
+    if (database) {
+      console.log('[IncubatorService] Connecting to Firebase for cycle data...');
+      const startRef = ref(database, 'Incubator/StartTimestamp');
+      
+      onValue(startRef, (snapshot) => {
+        const val = snapshot.val();
+        if (val) {
+          this.isActive = true;
+          this.startDate = new Date(val).toISOString();
+          
+          const msPassed = Date.now() - val;
+          const daysPassed = Math.floor(msPassed / (1000 * 60 * 60 * 24));
+          this.dayCount = Math.max(0, daysPassed);
+          
+          console.log(`[IncubatorService] Cycle active. Day ${this.dayCount} of ${config.incubation.totalDays}`);
+        } else {
+          this.isActive = false;
+          this.dayCount = 0;
+          this.startDate = null;
+          console.log('[IncubatorService] Cycle inactive.');
+        }
+        this._notifyListeners();
+      });
+
+      // Periodically check if a day rolled over
+      setInterval(() => {
+        if (this.isActive && this.startDate) {
+          const msPassed = Date.now() - new Date(this.startDate).getTime();
+          const daysPassed = Math.floor(msPassed / (1000 * 60 * 60 * 24));
+          if (daysPassed !== this.dayCount) {
+             this.dayCount = daysPassed;
+             this._notifyListeners();
+          }
+        }
+      }, 60 * 60 * 1000); // Check hourly
+    } else {
+      console.warn('[IncubatorService] Firebase not available. Cycle will not work correctly.');
+    }
   }
 
-  /**
-   * Register a callback that fires whenever status changes.
-   */
   onStatusChange(callback) {
     this.listeners.push(callback);
   }
@@ -21,69 +57,37 @@ class IncubatorService {
     this.listeners.forEach((fn) => fn(status));
   }
 
-  /**
-   * Start the 21-day incubation cycle.
-   */
   startCycle() {
     if (this.isActive) {
       return { success: false, message: 'Cycle is already running' };
     }
 
-    this.isActive = true;
-    this.dayCount = 1;
-    this.startDate = new Date().toISOString();
-
-    // Increment day count on interval (1 min = 1 day in demo mode)
-    this.dayTimerId = setInterval(() => {
-      if (this.dayCount >= config.incubation.totalDays) {
-        this.stopCycle();
-        return;
-      }
-      this.dayCount++;
-      console.log(`[IncubatorService] Day ${this.dayCount} of ${config.incubation.totalDays}`);
-      this._notifyListeners();
-    }, config.incubation.dayIncrementIntervalMs);
-
-    console.log('[IncubatorService] Incubation cycle started');
-    this._notifyListeners();
+    if (database) {
+      set(ref(database, 'Incubator/StartTimestamp'), Date.now());
+    }
 
     return { success: true, message: 'Incubation cycle started', status: this.getStatus() };
   }
 
-  /**
-   * Stop the incubation cycle.
-   */
   stopCycle() {
     if (!this.isActive) {
       return { success: false, message: 'No active cycle to stop' };
     }
 
-    if (this.dayTimerId) {
-      clearInterval(this.dayTimerId);
-      this.dayTimerId = null;
+    if (database) {
+      set(ref(database, 'Incubator/StartTimestamp'), null);
     }
-
-    this.isActive = false;
-    console.log(`[IncubatorService] Incubation cycle stopped at day ${this.dayCount}`);
-    this._notifyListeners();
 
     return { success: true, message: 'Incubation cycle stopped', status: this.getStatus() };
   }
 
-  /**
-   * Reset the cycle completely.
-   */
   resetCycle() {
-    this.stopCycle();
-    this.dayCount = 0;
-    this.startDate = null;
-    this._notifyListeners();
+    if (database) {
+      set(ref(database, 'Incubator/StartTimestamp'), Date.now());
+    }
     return { success: true, message: 'Cycle reset', status: this.getStatus() };
   }
 
-  /**
-   * Get full current status.
-   */
   getStatus() {
     return {
       isActive: this.isActive,
