@@ -5,11 +5,13 @@ const incubatorRoutes = require('./incubatorRoutes');
 const componentRoutes = require('./componentRoutes');
 const controlRoutes   = require('./controlRoutes');
 const hatchRoutes     = require('./hatchRoutes');
+const authRoutes      = require('./authRoutes');
 
 router.use('/sensors',    sensorRoutes);
 router.use('/incubator',  incubatorRoutes);
 router.use('/components', componentRoutes);
 router.use('/controls',   controlRoutes);
 router.use('/hatch',      hatchRoutes);
+router.use('/auth',       authRoutes);
 
 module.exports = router;
