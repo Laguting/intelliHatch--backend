@@ -1,31 +1,58 @@
-require('dotenv').config();
-const { database, ref, set } = require('./config/firebase');
+/**
+ * simulate-hardware.js
+ *
+ * Simulates an IoT sensor device writing temperature + humidity data
+ * to Firestore `sensors/latest`. The backend sensorService listens
+ * to this document via onSnapshot and reacts in real-time.
+ *
+ * Usage:
+ *   node simulate-hardware.js
+ */
 
-if (!database) {
-  console.error('Firebase not initialized. Check your .env file.');
+require('dotenv').config();
+const { firestore } = require('./config/firebase');
+
+if (!firestore) {
+  console.error('[Hardware Sim] ❌ Firestore not initialized. Check your service account JSON and .env file.');
   process.exit(1);
 }
 
 let temp = 37.0;
 let hum = 60.0;
 
-console.log('--- Hardware Simulator Started ---');
-console.log('Pushing fake sensor data to Firebase every 3 seconds...');
-console.log('Check your IntelliHatch website to see it update live!');
-console.log('Press Ctrl+C to stop.');
+console.log('');
+console.log('  ╔════════════════════════════════════════╗');
+console.log('  ║     IntelliHatch Hardware Simulator    ║');
+console.log('  ╠════════════════════════════════════════╣');
+console.log('  ║  Writing to Firestore: sensors/latest  ║');
+console.log('  ║  Interval: every 3 seconds             ║');
+console.log('  ║  Press Ctrl+C to stop                  ║');
+console.log('  ╚════════════════════════════════════════╝');
+console.log('');
 
-setInterval(() => {
-  // Random walk for smooth variations
+const latestDocRef = firestore.collection('sensors').doc('latest');
+
+setInterval(async () => {
+  // Random walk for smooth, realistic variations
   temp += (Math.random() - 0.5) * 0.4;
-  hum += (Math.random() - 0.5) * 2;
+  hum  += (Math.random() - 0.5) * 2;
 
-  // Keep within reasonable bounds
+  // Clamp within reasonable incubation bounds
   temp = Math.max(35, Math.min(40, temp));
-  hum = Math.max(40, Math.min(80, hum));
+  hum  = Math.max(40, Math.min(80, hum));
 
-  // Write to Firebase
-  set(ref(database, 'Sensors/Temperature'), parseFloat(temp.toFixed(1)));
-  set(ref(database, 'Sensors/Humidity'), parseFloat(hum.toFixed(1)));
-  
-  console.log(`[Hardware] Wrote -> Temp: ${temp.toFixed(1)}°C | Hum: ${hum.toFixed(1)}%`);
+  const reading = {
+    temperature: parseFloat(temp.toFixed(1)),
+    humidity:    parseFloat(hum.toFixed(1)),
+    timestamp:   new Date().toISOString(),
+  };
+
+  try {
+    await latestDocRef.set(reading);
+    console.log(
+      `[Hardware] ✅ Wrote → Temp: ${reading.temperature}°C | Hum: ${reading.humidity}% | ${reading.timestamp}`
+    );
+  } catch (err) {
+    console.error('[Hardware] ❌ Write failed:', err.message);
+  }
 }, 3000);

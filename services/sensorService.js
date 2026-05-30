@@ -1,28 +1,33 @@
 const config = require('../config');
-const { database, ref, onValue } = require('../config/firebase');
+const { firestore } = require('../config/firebase');
+
+// ─── Firestore Refs ──────────────────────────────────────────────────────────
+// sensors/latest  → live snapshot from hardware
+// sensors/latest/history → time-series log (subcollection)
+
+const LATEST_DOC = () => firestore && firestore.collection('sensors').doc('latest');
+const HISTORY_COL = () => firestore && firestore.collection('sensors').doc('latest').collection('history');
 
 class SensorService {
   constructor() {
     this.history = [];
-    this.latestReading = { temperature: 37.0, humidity: 60.0, timestamp: new Date().toISOString() };
-    this.listeners = [];
-    this.isStreaming = false;
-    
-    // Store current values so we can combine them into a single reading
-    this.currentTemp = 37.0;
-    this.currentHum = 60.0;
-  }
-
-  /**
-   * Internal method to record the latest combined reading into history and notify listeners.
-   */
-  _recordReading() {
-    const reading = {
-      temperature: this.currentTemp,
-      humidity: this.currentHum,
+    this.latestReading = {
+      temperature: 37.0,
+      humidity: 60.0,
       timestamp: new Date().toISOString(),
     };
-    
+    this.listeners = [];
+    this.isStreaming = false;
+    this._unsubscribe = null;
+  }
+
+  // ─── Internal ──────────────────────────────────────────────────────────────
+
+  /**
+   * Called every time we receive a new reading (from Firestore onSnapshot).
+   * Keeps in-memory state + history, and notifies registered listeners.
+   */
+  _handleReading(reading) {
     this.latestReading = reading;
 
     this.history.push(reading);
@@ -30,75 +35,76 @@ class SensorService {
       this.history.shift();
     }
 
-    // Notify all registered listeners (e.g. socket service)
     this.listeners.forEach((fn) => fn(reading));
-
-    return reading;
   }
 
-  /**
-   * Register a callback that fires on every new reading.
-   */
+  // ─── Public API ────────────────────────────────────────────────────────────
+
+  /** Register a callback that fires on every new sensor reading. */
   onReading(callback) {
     this.listeners.push(callback);
   }
 
   /**
-   * Start listening to Firebase for sensor data.
+   * Start listening to Firestore `sensors/latest` for live sensor data.
+   * The hardware (or simulate-hardware.js) writes temperature + humidity there.
    */
   startStreaming() {
     if (this.isStreaming) return;
     this.isStreaming = true;
 
-    if (!database) {
-      console.warn('[SensorService] Firebase not configured. Sensors will not update.');
+    if (!firestore) {
+      console.warn('[SensorService] Firestore not configured. Sensors will not update.');
       return;
     }
 
-    console.log('[SensorService] Connecting to Firebase for live sensor data...');
+    console.log('[SensorService] 🔥 Subscribing to Firestore sensors/latest...');
 
-    const tempRef = ref(database, 'Sensors/Temperature');
-    const humRef = ref(database, 'Sensors/Humidity');
+    this._unsubscribe = LATEST_DOC().onSnapshot(
+      (snapshot) => {
+        if (!snapshot.exists) return;
 
-    onValue(tempRef, (snapshot) => {
-      const val = snapshot.val();
-      if (val !== null) {
-        this.currentTemp = parseFloat(val);
-        this._recordReading();
+        const data = snapshot.data();
+        if (data == null || data.temperature == null || data.humidity == null) return;
+
+        const reading = {
+          temperature: parseFloat(data.temperature),
+          humidity: parseFloat(data.humidity),
+          timestamp: data.timestamp || new Date().toISOString(),
+        };
+
+        this._handleReading(reading);
+
+        // Append to history subcollection (fire-and-forget)
+        HISTORY_COL()
+          .add(reading)
+          .catch((e) => console.error('[SensorService] History write error:', e.message));
+      },
+      (error) => {
+        console.error('[SensorService] Firestore snapshot error:', error.message);
       }
-    });
-
-    onValue(humRef, (snapshot) => {
-      const val = snapshot.val();
-      if (val !== null) {
-        this.currentHum = parseFloat(val);
-        this._recordReading();
-      }
-    });
+    );
   }
 
-  /**
-   * Stop listening (mostly a no-op when using Firebase onValue, or we'd unsubscribe).
-   */
+  /** Unsubscribe from Firestore listener. */
   stopStreaming() {
+    if (this._unsubscribe) {
+      this._unsubscribe();
+      this._unsubscribe = null;
+    }
     this.isStreaming = false;
     console.log('[SensorService] Streaming stopped');
   }
 
-  /**
-   * Get the most recent sensor reading.
-   */
+  /** Returns the most recent sensor reading. */
   getLatestReading() {
     return this.latestReading;
   }
 
-  /**
-   * Get the full history buffer for graph rendering.
-   */
+  /** Returns the in-memory history buffer for graph rendering. */
   getHistory() {
     return [...this.history];
   }
 }
 
-// Export a singleton instance
 module.exports = new SensorService();

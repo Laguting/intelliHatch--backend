@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const routes = require('./routes');
-const { database } = require('./config/firebase');
+// Firebase is initialized in config/firebase.js and consumed directly by each service
 const socketService = require('./services/socketService');
 const sensorService = require('./services/sensorService');
 

@@ -1,5 +1,10 @@
 const config = require('../config');
-const { database, ref, onValue, set } = require('../config/firebase');
+const { firestore } = require('../config/firebase');
+
+// ─── Firestore Ref ───────────────────────────────────────────────────────────
+// incubator/cycle → { startTimestamp: number|null, isActive: boolean }
+
+const CYCLE_DOC = () => firestore && firestore.collection('incubator').doc('cycle');
 
 class IncubatorService {
   constructor() {
@@ -7,49 +12,68 @@ class IncubatorService {
     this.dayCount = 0;
     this.startDate = null;
     this.listeners = [];
+    this._unsubscribe = null;
 
-    if (database) {
-      console.log('[IncubatorService] Connecting to Firebase for cycle data...');
-      const startRef = ref(database, 'Incubator/StartTimestamp');
-      
-      onValue(startRef, (snapshot) => {
-        const val = snapshot.val();
-        if (val) {
+    this._init();
+  }
+
+  // ─── Internal ──────────────────────────────────────────────────────────────
+
+  _init() {
+    if (!firestore) {
+      console.warn('[IncubatorService] Firestore not available. Cycle will not persist.');
+      return;
+    }
+
+    console.log('[IncubatorService] 🔥 Subscribing to Firestore incubator/cycle...');
+
+    this._unsubscribe = CYCLE_DOC().onSnapshot(
+      (snapshot) => {
+        if (!snapshot.exists) {
+          this.isActive = false;
+          this.dayCount = 0;
+          this.startDate = null;
+          console.log('[IncubatorService] No cycle document found. Cycle inactive.');
+          this._notifyListeners();
+          return;
+        }
+
+        const data = snapshot.data();
+        const startTs = data.startTimestamp; // epoch ms or null
+
+        if (startTs) {
           this.isActive = true;
-          this.startDate = new Date(val).toISOString();
-          
-          const msPassed = Date.now() - val;
-          const daysPassed = Math.floor(msPassed / (1000 * 60 * 60 * 24));
-          this.dayCount = Math.max(0, daysPassed);
-          
-          console.log(`[IncubatorService] Cycle active. Day ${this.dayCount} of ${config.incubation.totalDays}`);
+          this.startDate = new Date(startTs).toISOString();
+          const msPassed = Date.now() - startTs;
+          this.dayCount = Math.max(0, Math.floor(msPassed / (1000 * 60 * 60 * 24)));
+          console.log(
+            `[IncubatorService] Cycle active. Day ${this.dayCount} of ${config.incubation.totalDays}`
+          );
         } else {
           this.isActive = false;
           this.dayCount = 0;
           this.startDate = null;
           console.log('[IncubatorService] Cycle inactive.');
         }
+
         this._notifyListeners();
-      });
+      },
+      (error) => {
+        console.error('[IncubatorService] Firestore snapshot error:', error.message);
+      }
+    );
 
-      // Periodically check if a day rolled over
-      setInterval(() => {
-        if (this.isActive && this.startDate) {
-          const msPassed = Date.now() - new Date(this.startDate).getTime();
-          const daysPassed = Math.floor(msPassed / (1000 * 60 * 60 * 24));
-          if (daysPassed !== this.dayCount) {
-             this.dayCount = daysPassed;
-             this._notifyListeners();
-          }
+    // Periodically re-compute day count without a new Firestore event
+    setInterval(() => {
+      if (this.isActive && this.startDate) {
+        const msPassed = Date.now() - new Date(this.startDate).getTime();
+        const daysPassed = Math.max(0, Math.floor(msPassed / (1000 * 60 * 60 * 24)));
+        if (daysPassed !== this.dayCount) {
+          this.dayCount = daysPassed;
+          this._notifyListeners();
         }
-      }, 60 * 60 * 1000); // Check hourly
-    } else {
-      console.warn('[IncubatorService] Firebase not available. Cycle will not work correctly.');
-    }
-  }
-
-  onStatusChange(callback) {
-    this.listeners.push(callback);
+      }
+    }, 60 * 60 * 1000); // Hourly
   }
 
   _notifyListeners() {
@@ -57,15 +81,24 @@ class IncubatorService {
     this.listeners.forEach((fn) => fn(status));
   }
 
+  _persistCycle(startTimestamp) {
+    if (!firestore) return;
+    CYCLE_DOC()
+      .set({ startTimestamp, isActive: startTimestamp !== null })
+      .catch((e) => console.error('[IncubatorService] Firestore write error:', e.message));
+  }
+
+  // ─── Public API ────────────────────────────────────────────────────────────
+
+  onStatusChange(callback) {
+    this.listeners.push(callback);
+  }
+
   startCycle() {
     if (this.isActive) {
       return { success: false, message: 'Cycle is already running' };
     }
-
-    if (database) {
-      set(ref(database, 'Incubator/StartTimestamp'), Date.now());
-    }
-
+    this._persistCycle(Date.now());
     return { success: true, message: 'Incubation cycle started', status: this.getStatus() };
   }
 
@@ -73,18 +106,12 @@ class IncubatorService {
     if (!this.isActive) {
       return { success: false, message: 'No active cycle to stop' };
     }
-
-    if (database) {
-      set(ref(database, 'Incubator/StartTimestamp'), null);
-    }
-
+    this._persistCycle(null);
     return { success: true, message: 'Incubation cycle stopped', status: this.getStatus() };
   }
 
   resetCycle() {
-    if (database) {
-      set(ref(database, 'Incubator/StartTimestamp'), Date.now());
-    }
+    this._persistCycle(Date.now());
     return { success: true, message: 'Cycle reset', status: this.getStatus() };
   }
 
