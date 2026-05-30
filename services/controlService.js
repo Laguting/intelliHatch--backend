@@ -3,7 +3,7 @@ const { firestore } = require('../config/firebase');
 // ─── Firestore Ref ───────────────────────────────────────────────────────────
 // controls/state → { Candling, Fan, Bulb, Mist, Motor: boolean, turnerPosition: string }
 
-const STATE_DOC = () => firestore && firestore.collection('controls').doc('state');
+const STATE_DOC = () => firestore && firestore.collection('Intellihatch').doc('Manual Control');
 
 const VALID_CONTROLS = ['candling', 'fan', 'bulb', 'mist', 'motor'];
 const VALID_TURNER_POSITIONS = ['left', 'center', 'right'];

@@ -24,13 +24,13 @@ console.log('');
 console.log('  ╔════════════════════════════════════════╗');
 console.log('  ║     IntelliHatch Hardware Simulator    ║');
 console.log('  ╠════════════════════════════════════════╣');
-console.log('  ║  Writing to Firestore: sensors/latest  ║');
+console.log('  ║  Writing to Firestore: Intellihatch/En ║');
 console.log('  ║  Interval: every 3 seconds             ║');
 console.log('  ║  Press Ctrl+C to stop                  ║');
 console.log('  ╚════════════════════════════════════════╝');
 console.log('');
 
-const latestDocRef = firestore.collection('sensors').doc('latest');
+const latestDocRef = firestore.collection('Intellihatch').doc('Environment');
 
 setInterval(async () => {
   // Random walk for smooth, realistic variations
@@ -42,15 +42,15 @@ setInterval(async () => {
   hum  = Math.max(40, Math.min(80, hum));
 
   const reading = {
-    temperature: parseFloat(temp.toFixed(1)),
-    humidity:    parseFloat(hum.toFixed(1)),
+    Temperature: parseFloat(temp.toFixed(1)),
+    Humidity:    parseFloat(hum.toFixed(1)),
     timestamp:   new Date().toISOString(),
   };
 
   try {
     await latestDocRef.set(reading);
     console.log(
-      `[Hardware] ✅ Wrote → Temp: ${reading.temperature}°C | Hum: ${reading.humidity}% | ${reading.timestamp}`
+      `[Hardware] ✅ Wrote → Temp: ${reading.Temperature}°C | Hum: ${reading.Humidity}% | ${reading.timestamp}`
     );
   } catch (err) {
     console.error('[Hardware] ❌ Write failed:', err.message);

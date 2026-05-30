@@ -5,8 +5,8 @@ const { firestore } = require('../config/firebase');
 // sensors/latest  → live snapshot from hardware
 // sensors/latest/history → time-series log (subcollection)
 
-const LATEST_DOC = () => firestore && firestore.collection('sensors').doc('latest');
-const HISTORY_COL = () => firestore && firestore.collection('sensors').doc('latest').collection('history');
+const LATEST_DOC = () => firestore && firestore.collection('Intellihatch').doc('Environment');
+const HISTORY_COL = () => firestore && firestore.collection('Intellihatch').doc('Environment').collection('history');
 
 class SensorService {
   constructor() {
@@ -65,12 +65,17 @@ class SensorService {
         if (!snapshot.exists) return;
 
         const data = snapshot.data();
-        if (data == null || data.temperature == null || data.humidity == null) return;
+        if (data == null) return;
+
+        const temp = data.Temperature !== undefined ? data.Temperature : data.temperature;
+        const hum = data.Humidity !== undefined ? data.Humidity : data.humidity;
+
+        if (temp == null || hum == null) return;
 
         const reading = {
-          temperature: parseFloat(data.temperature),
-          humidity: parseFloat(data.humidity),
-          timestamp: data.timestamp || new Date().toISOString(),
+          temperature: parseFloat(temp),
+          humidity: parseFloat(hum),
+          timestamp: data.timestamp || data.Timestamp || new Date().toISOString(),
         };
 
         this._handleReading(reading);

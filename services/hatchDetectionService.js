@@ -3,7 +3,7 @@ const { firestore } = require('../config/firebase');
 // ─── Firestore Ref ───────────────────────────────────────────────────────────
 // hatch/detection → { detectedCount: number, status: string, lastDetectionTime: string|null }
 
-const DETECTION_DOC = () => firestore && firestore.collection('hatch').doc('detection');
+const DETECTION_DOC = () => firestore && firestore.collection('Intellihatch').doc('Hatch Detection');
 
 class HatchDetectionService {
   constructor() {

@@ -20,11 +20,11 @@ async function checkFirestore() {
   console.log('\n🔥  Firestore connection established. Reading known collections...\n');
 
   const collections = [
-    { path: 'sensors/latest',        label: 'Latest Sensor Reading' },
-    { path: 'controls/state',        label: 'Control States' },
-    { path: 'incubator/cycle',       label: 'Incubation Cycle' },
-    { path: 'components/statuses',   label: 'Component Statuses' },
-    { path: 'hatch/detection',       label: 'Hatch Detection' },
+    { path: 'Intellihatch/Environment',     label: 'Latest Sensor Reading' },
+    { path: 'Intellihatch/Manual Control',  label: 'Control States' },
+    { path: 'incubator/cycle',              label: 'Incubation Cycle' },
+    { path: 'components/statuses',          label: 'Component Statuses' },
+    { path: 'Intellihatch/Hatch Detection',  label: 'Hatch Detection' },
   ];
 
   for (const { path, label } of collections) {

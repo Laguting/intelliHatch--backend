@@ -2,9 +2,11 @@ require('dotenv').config();
 const admin = require('firebase-admin');
 const path = require('path');
 
+const { getFirestore } = require('firebase-admin/firestore');
+
 const serviceAccountPath = path.join(
   __dirname,
-  '../intellihatch-05es-firebase-adminsdk-fbsvc-afb005c24a.json'
+  '../intellihatch-05es-firebase-adminsdk-fbsvc-751983310b.json'
 );
 
 let app = null;
@@ -22,7 +24,7 @@ try {
     app = admin.app();
   }
 
-  firestore = admin.firestore();
+  firestore = getFirestore(app, 'default');
 
   console.log(
     '[Firebase] ✅ Firestore initialized for project:',
